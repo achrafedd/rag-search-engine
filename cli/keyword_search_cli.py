@@ -1,4 +1,5 @@
 import argparse
+from ast import arguments
 from string import punctuation
 
 from inverted_index import InvertedIndex
@@ -27,11 +28,6 @@ def matching(query: str, title: str) -> bool:
 inverted_index = InvertedIndex()
 
 
-def build_command() -> None:
-    docs = inverted_index.get_documents("merida")
-    print(f"First document for token 'merida' = {docs[0]}")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Keyword Search CLI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -39,27 +35,29 @@ def main() -> None:
     search_parser = subparsers.add_parser("search", help="Search movies using keywords")
     search_parser.add_argument("query", type=str, help="Search query")
 
-    search_parser = subparsers.add_parser("build", help="Search movies using keywords")
+    search_parser = subparsers.add_parser("build", help="build the inverted index")
+    search_parser = subparsers.add_parser("tf", help="get term frequency")
+    search_parser.add_argument("doc_id", type=int, help="document id")
+    search_parser.add_argument("term", type=str, help="term")
     args = parser.parse_args()
 
     match args.command:
         case "search":
-            results = list(
-                filter(lambda it: matching(args.query, it["title"]), data["movies"])
-            )
+            inverted_index.load()
+            results = []
+            for term in processing(args.query):
+                if len(results) >= 5:
+                    break
+                results += inverted_index.get_documents(term)
             print(f"Searching for: {args.query}")
-            print(
-                *[
-                    f"{idx}. {ele['title']}"
-                    for idx, ele in enumerate(
-                        sorted(results, key=lambda x: x["id"])[:5], start=1
-                    )
-                ],
-                end="",
-                sep="\n",
-            )
+            for movie_id in results[:5]:
+                print(f"{movie_id} {inverted_index.docmap[movie_id].split(':')[0]}")
         case "build":
-            build_command()
+            inverted_index.build()
+        case "tf":
+            inverted_index.load()
+            tf = inverted_index.get_tf(args.doc_id, args.term)
+            print(tf)
         case _:
             parser.print_help()
 

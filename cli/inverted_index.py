@@ -1,18 +1,30 @@
 import json
 import pickle
+from collections import Counter
 from pathlib import Path
 
 from nltk import PorterStemmer
 from nltk.tokenize.sonority_sequencing import punctuation
-from rich.progress import Progress
 
 
 class InvertedIndex:
     def __init__(self) -> None:
-        self.index_path: Path = Path("cache/index.pkl")
-        self.docmap_path: Path = Path("cache/docmap.pkl")
+        self.parent: Path = Path("cache/")
+        self.index_path: Path = self.parent / "index.pkl"
+        self.docmap_path: Path = self.parent / "docmap.pkl"
+        self.term_paths: Path = self.parent / "term_frequencies.pkl"
         self.index: dict = {}
         self.docmap: dict = {}
+        self.term_frequencies: dict = {}
+
+    def get_tf(self, doc_id, term):
+        return self.term_frequencies[doc_id].get(term, 0)
+
+    def tokenizer(self, term):
+        token = self.processing(term)
+        if 0 > len(token) > 1:
+            raise ValueError("Invalid Token")
+        return token[0]
 
     @staticmethod
     def processing(text: str) -> list[str]:
@@ -31,35 +43,42 @@ class InvertedIndex:
         tokens = self.processing(text)
         for token in tokens:
             self.index.setdefault(token, set()).add(doc_id)
+            self.term_frequencies.setdefault(doc_id, Counter())[token] += 1
 
     def get_documents(self, term) -> list[int]:
         with open(self.index_path, "rb") as file:
             data = pickle.load(file)
-        return sorted(data[term])
+        return sorted(data.get(term, []))
 
     def build(self):
         data = self.load_movies()
-        with Progress() as progress:
-            task = progress.add_task("Building the index: ", total=len(data["movies"]))
-            for doc in data["movies"]:
-                text = f"{doc['title']} {doc['description']}"
-                self.__add_document(doc["id"], text)
-                self.docmap[doc["id"]] = text
-                progress.update(task, advance=len(data["movies"]) * 0.0005)
+        for doc in data["movies"]:
+            text = f"{doc['title']}:{doc['description']}"
+            self.__add_document(doc["id"], text)
+            self.docmap[doc["id"]] = text
         self.save()
 
     def save(self):
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        self.docmap_path.parent.mkdir(parents=True, exist_ok=True)
+        self.parent.mkdir(parents=True, exist_ok=True)
         with open(self.index_path, "+wb") as file:
             pickle.dump(self.index, file)
         with open(self.docmap_path, "+wb") as file:
             pickle.dump(self.docmap, file)
+        with open(self.term_paths, "+wb") as file:
+            pickle.dump(self.term_frequencies, file)
 
     def load_movies(self):
         with open("data/movies.json") as file:
             data = json.load(file)
         return data
+
+    def load(self):
+        with open(self.index_path, "rb") as file:
+            self.index = pickle.load(file)
+        with open(self.docmap_path, "rb") as file:
+            self.docmap = pickle.load(file)
+        with open(self.term_paths, "rb") as file:
+            self.term_frequencies = pickle.load(file)
 
 
 if __name__ == "__main__":
